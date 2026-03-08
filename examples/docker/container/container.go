@@ -19,7 +19,9 @@ func InitClient() *client.Client {
 func ContainerRunList() ([]container.Summary, error) {
 	client := InitClient()
 	defer client.Close() // 关闭客户端
-	list, err := client.ContainerList(context.Background(), container.ListOptions{})
+	// 如果是 docker ps -a 参数，那么需要设置ListOptions结构体中的All字段为true
+	options := container.ListOptions{}
+	list, err := client.ContainerList(context.Background(), options)
 	if err != nil {
 		return nil, fmt.Errorf("查询容器列表失败: %w", err)
 	}
