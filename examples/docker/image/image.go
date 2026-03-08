@@ -1,4 +1,4 @@
-package docker
+package image
 
 import (
 	"context"
@@ -33,6 +33,7 @@ func InitClient() *client.Client {
 // ImageList 获取所有镜像列表
 func ImageList() ([]Image, error) {
 	client := InitClient()
+	defer client.Close() // 关闭客户端
 	images, err := client.ImageList(context.Background(), image.ListOptions{})
 	if err != nil {
 		panic(err)
@@ -163,6 +164,7 @@ func size(size int64) string {
 // ImagePull 镜像下载
 func ImagePull(name string) error {
 	client := InitClient()
+	defer client.Close() // 关闭客户端
 	pull, err := client.ImagePull(context.Background(), name, image.PullOptions{})
 	if err != nil {
 		return err
@@ -180,6 +182,7 @@ func ImagePull(name string) error {
 func ImageRemove(imageTag string) (bool, error) {
 	// 获取client实例
 	client := InitClient()
+	defer client.Close() // 关闭客户端
 	// 设置删除选项
 	removeOpts := image.RemoveOptions{
 		Force:         true, // 强制删除，即使被容器使用 [7]
