@@ -16,3 +16,14 @@ func TestContainerRunList(t *testing.T) {
 		t.Logf("测试检查 - 容器 ID: %s, 容器名称: %v", c.ID[:10], c.Names)
 	}
 }
+
+// CreateContainer 根据镜像创建容器单元测试
+func TestCreateContainer(t *testing.T) {
+	image := "hello-world:latest"
+	container, err := CreateContainer(image, "hello")
+	if err != nil {
+		t.Logf("创建容器失败: %v\n", err)
+		return
+	}
+	t.Logf("根据镜像名: %s 成功创建容器ID为 %s 的容器!", image, container)
+}
