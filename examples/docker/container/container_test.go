@@ -27,3 +27,20 @@ func TestCreateContainer(t *testing.T) {
 	}
 	t.Logf("根据镜像名: %s 成功创建容器ID为 %s 的容器!", image, container)
 }
+
+// TestStartContainer 根据容器ID运行容器单元测试
+func TestStartContainer(t *testing.T) {
+	image := "hello-world:latest"
+	container, err := CreateContainer(image, "hello")
+	if err != nil {
+		t.Logf("创建容器失败: %v\n", err)
+		return
+	}
+	t.Logf("根据镜像名: %s 成功创建容器ID为 %s 的容器!", image, container)
+	startContainer, err := StartContainer(container)
+	if err != nil {
+		t.Logf("容器运行失败: %v\n", err)
+		return
+	}
+	t.Logf("容器ID为 %s 的容器，是否成功运行: %v\n", container, startContainer)
+}

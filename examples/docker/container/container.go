@@ -83,3 +83,18 @@ func CreateContainer(image, containerName string) (string, error) {
 	fmt.Printf("容器创建成功！ID: %s\n", resp.ID[:12])
 	return resp.ID, nil
 }
+
+// StartContainer 根据容器ID运行容器
+func StartContainer(containerID string) (bool, error) {
+	ctx := context.Background()
+	cli := InitClient()
+	defer cli.Close()
+
+	err := cli.ContainerStart(ctx, containerID, container.StartOptions{})
+	if err != nil {
+		return false, fmt.Errorf("启动容器失败: %w", err)
+	}
+
+	fmt.Printf("容器启动成功！ID: %s\n", containerID[:12])
+	return true, nil
+}
