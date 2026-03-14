@@ -5,24 +5,33 @@ import (
 	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"log"
 )
 
 // InitClient 初始化 Docker 客户端
 func InitClient() *client.Client {
-	client, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.47"))
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.47"))
 	if err != nil {
 		panic(err)
 	}
-	return client
+	return cli
 }
 
-// ContainerRunList 查询正在运行的容器列表
-func ContainerRunList() ([]container.Summary, error) {
-	client := InitClient()
-	defer client.Close() // 关闭客户端
+// Close 关闭 Docker 客户端
+func Close(cli *client.Client) {
+	if err := cli.Close(); err != nil {
+		log.Fatalf("Docker客户端关闭失败: %s\n", err)
+	}
+	log.Printf("Docker客户端关闭成功\n")
+}
+
+// RunList 查询正在运行的容器列表
+func RunList() ([]container.Summary, error) {
+	cli := InitClient()
+	defer Close(cli) // 关闭客户端
 	// 如果是 docker ps -a 参数，那么需要设置ListOptions结构体中的All字段为true
 	options := container.ListOptions{}
-	list, err := client.ContainerList(context.Background(), options)
+	list, err := cli.ContainerList(context.Background(), options)
 	if err != nil {
 		return nil, fmt.Errorf("查询容器列表失败: %w", err)
 	}
@@ -34,11 +43,11 @@ func ContainerRunList() ([]container.Summary, error) {
 	return list, nil
 }
 
-// CreateContainer 根据镜像创建一个容器
-func CreateContainer(image, containerName string) (string, error) {
+// Create 根据镜像创建一个容器
+func Create(image, containerName string) (string, error) {
 	ctx := context.Background()
-	client := InitClient()
-	defer client.Close()
+	cli := InitClient()
+	defer Close(cli) // 关闭客户端
 	// 容器核心配置（类似 Dockerfile 中的 CMD/ENV/EXPOSE 等）
 	config := &container.Config{
 		Image: image, // 必须指定的镜像名称（可以带 tag，如 "nginx:alpine"）
@@ -48,20 +57,17 @@ func CreateContainer(image, containerName string) (string, error) {
 		// Env:   []string{"NGINX_PORT=80"},
 		// ExposedPorts: map[string]struct{}{"80/tcp": {}},
 	}
-
 	// 主机配置（端口映射、资源限制、重启策略等）
 	hostConfig := &container.HostConfig{
 		// 示例：端口映射（宿主机 8080 -> 容器 80）
 		// PortBindings: map[string][]types.PortBinding{
 		// 	"80/tcp": {{HostIP: "0.0.0.0", HostPort: "8080"}},
 		// },
-
 		// 示例：重启策略（容器退出后自动重启）
 		// RestartPolicy: container.RestartPolicy{
 		// 	Name:              "unless-stopped",
 		// 	MaximumRetryCount: 0,
 		// },
-
 		// 示例：内存/CPU 限制
 		// Resources: container.Resources{
 		// 	Memory:     512 * 1024 * 1024, // 512MB
@@ -70,7 +76,7 @@ func CreateContainer(image, containerName string) (string, error) {
 		// },
 	}
 	// 创建容器
-	resp, err := client.ContainerCreate(
+	resp, err := cli.ContainerCreate(
 		ctx,
 		config,
 		hostConfig,
@@ -85,27 +91,25 @@ func CreateContainer(image, containerName string) (string, error) {
 	return resp.ID, nil
 }
 
-// StartContainer 根据容器ID运行容器
-func StartContainer(containerID string) (bool, error) {
+// Start 根据容器ID运行容器
+func Start(containerID string) (bool, error) {
 	ctx := context.Background()
 	cli := InitClient()
-	defer cli.Close()
-
+	defer Close(cli) // 关闭客户端
 	err := cli.ContainerStart(ctx, containerID, container.StartOptions{})
 	if err != nil {
 		return false, fmt.Errorf("启动容器失败: %w", err)
 	}
-
 	fmt.Printf("容器启动成功！ID: %s\n", containerID[:12])
 	return true, nil
 }
 
 // GetContainerID 根据容器名称获取容器ID
 func GetContainerID(containerName string) (string, error) {
-	client := InitClient()
-	defer client.Close() // 关闭docker客户端
+	cli := InitClient()
+	defer Close(cli) // 关闭客户端
 	ctx := context.Background()
-	containerInfo, err := client.ContainerInspect(ctx, containerName)
+	containerInfo, err := cli.ContainerInspect(ctx, containerName)
 	if err != nil {
 		// 如果容器不存在，err 通常会是 client.IsErrNotFound(err) == true
 		return "", fmt.Errorf("获取容器信息失败 (名称: %s): %w", containerName, err)
@@ -114,10 +118,10 @@ func GetContainerID(containerName string) (string, error) {
 	return containerInfo.ID, nil
 }
 
-// RemoveContainer 删除容器
-func RemoveContainer(identifier string, force bool) (bool, error) {
-	client := InitClient()
-	defer client.Close() // 关闭docker客户端
+// Remove 删除容器
+func Remove(identifier string, force bool) (bool, error) {
+	cli := InitClient()
+	defer Close(cli) // 关闭客户端
 	ctx := context.Background()
 	// 准备删除选项
 	options := container.RemoveOptions{
@@ -126,7 +130,7 @@ func RemoveContainer(identifier string, force bool) (bool, error) {
 		Force:         force, // 是否强制删除运行中的容器
 	}
 	// 删除容器
-	err := client.ContainerRemove(ctx, identifier, options)
+	err := cli.ContainerRemove(ctx, identifier, options)
 	if err == nil {
 		fmt.Printf("容器已成功删除: %s\n", identifier)
 		return true, nil
