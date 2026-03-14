@@ -44,3 +44,22 @@ func TestStartContainer(t *testing.T) {
 	}
 	t.Logf("容器ID为 %s 的容器，是否成功运行: %v\n", container, startContainer)
 }
+
+// TestGetContainerID 容器名称获取容器ID
+func TestGetContainerID(t *testing.T) {
+	containerID, err := GetContainerID("hello")
+	if err != nil {
+		t.Logf("获取容器ID失败: %v\n", err)
+		return
+	}
+	t.Logf("容器ID: %s\n", containerID)
+}
+
+// TestRemoveContainer 移除某个不在运行的容器
+func TestRemoveContainer(t *testing.T) {
+	container, err := RemoveContainer("hello", false)
+	if err != nil {
+		t.Logf("容器移除失败: %v\n", err)
+	}
+	t.Logf("容器移除成功! ID: %v\n", container)
+}

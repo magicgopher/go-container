@@ -7,6 +7,7 @@ import (
 	"github.com/docker/docker/client"
 )
 
+// InitClient 初始化 Docker 客户端
 func InitClient() *client.Client {
 	client, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.47"))
 	if err != nil {
@@ -36,8 +37,8 @@ func ContainerRunList() ([]container.Summary, error) {
 // CreateContainer 根据镜像创建一个容器
 func CreateContainer(image, containerName string) (string, error) {
 	ctx := context.Background()
-	cli := InitClient()
-	defer cli.Close()
+	client := InitClient()
+	defer client.Close()
 	// 容器核心配置（类似 Dockerfile 中的 CMD/ENV/EXPOSE 等）
 	config := &container.Config{
 		Image: image, // 必须指定的镜像名称（可以带 tag，如 "nginx:alpine"）
@@ -69,7 +70,7 @@ func CreateContainer(image, containerName string) (string, error) {
 		// },
 	}
 	// 创建容器
-	resp, err := cli.ContainerCreate(
+	resp, err := client.ContainerCreate(
 		ctx,
 		config,
 		hostConfig,
@@ -97,4 +98,38 @@ func StartContainer(containerID string) (bool, error) {
 
 	fmt.Printf("容器启动成功！ID: %s\n", containerID[:12])
 	return true, nil
+}
+
+// GetContainerID 根据容器名称获取容器ID
+func GetContainerID(containerName string) (string, error) {
+	client := InitClient()
+	defer client.Close() // 关闭docker客户端
+	ctx := context.Background()
+	containerInfo, err := client.ContainerInspect(ctx, containerName)
+	if err != nil {
+		// 如果容器不存在，err 通常会是 client.IsErrNotFound(err) == true
+		return "", fmt.Errorf("获取容器信息失败 (名称: %s): %w", containerName, err)
+	}
+	// 成功获取，返回完整容器 ID
+	return containerInfo.ID, nil
+}
+
+// RemoveContainer 删除容器
+func RemoveContainer(identifier string, force bool) (bool, error) {
+	client := InitClient()
+	defer client.Close() // 关闭docker客户端
+	ctx := context.Background()
+	// 准备删除选项
+	options := container.RemoveOptions{
+		RemoveVolumes: true,  // 删除挂载的匿名卷（通常建议开启）
+		RemoveLinks:   false, // 是否删除链接（一般用不到）
+		Force:         force, // 是否强制删除运行中的容器
+	}
+	// 删除容器
+	err := client.ContainerRemove(ctx, identifier, options)
+	if err == nil {
+		fmt.Printf("容器已成功删除: %s\n", identifier)
+		return true, nil
+	}
+	return false, err
 }
