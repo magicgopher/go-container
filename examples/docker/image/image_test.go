@@ -6,7 +6,7 @@ import (
 
 // TestImageList 镜像列表单元测试
 func TestImageList(t *testing.T) {
-	images, err := ImageList()
+	images, err := List()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,7 +18,7 @@ func TestImageList(t *testing.T) {
 
 // TestImagePull 下载镜像单元测试
 func TestImagePull(t *testing.T) {
-	err := ImagePull("hello-world")
+	err := Pull("hello-world")
 	if err != nil {
 		t.Logf("镜像下载失败: %v\n", err)
 	}
@@ -27,7 +27,7 @@ func TestImagePull(t *testing.T) {
 
 // TestImageRemove 删除镜像单元测试
 func TestImageRemove(t *testing.T) {
-	result, err := ImageRemove("hello-world")
+	result, err := Remove("zlmediakit/zlmediakit:master")
 	if err != nil {
 		t.Fatalf("预期删除成功，但发生了意外错误: %v", err)
 	}

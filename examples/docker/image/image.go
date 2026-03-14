@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
 	"strings"
@@ -14,7 +15,8 @@ import (
 	"github.com/docker/docker/client"
 )
 
-type Image struct {
+// ImgInfo 镜像信息
+type ImgInfo struct {
 	Repository string
 	Tag        string
 	ImageID    string
@@ -22,56 +24,76 @@ type Image struct {
 	Size       string
 }
 
+// InitClient 初始化 Docker 客户端
 func InitClient() *client.Client {
-	client, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.47"))
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.47"))
 	if err != nil {
 		panic(err)
 	}
-	return client
+	return cli
 }
 
-// ImageList 获取所有镜像列表
-func ImageList() ([]Image, error) {
-	client := InitClient()
-	defer client.Close() // 关闭客户端
-	images, err := client.ImageList(context.Background(), image.ListOptions{})
+// Close 关闭 Docker 客户端
+func Close(cli *client.Client) {
+	if err := cli.Close(); err != nil {
+		log.Fatalf("Docker客户端关闭失败: %s\n", err)
+	}
+	log.Printf("Docker客户端关闭成功\n")
+}
+
+// List 获取所有镜像列表
+func List() ([]ImgInfo, error) {
+	cli := InitClient()
+	defer Close(cli) // 关闭客户端
+	images, err := cli.ImageList(context.Background(), image.ListOptions{})
 	if err != nil {
 		panic(err)
 	}
-	var imageList []Image
-	for _, image := range images {
-		imageList = append(imageList, toImage(image))
-		// log.Println(image.Created)
+	var imageList []ImgInfo
+	for _, img := range images {
+		imageList = append(imageList, toImage(img))
 	}
 	return imageList, nil
 }
 
-// toImage 将image.Summary转换为Image
-func toImage(image image.Summary) Image {
-	return Image{
-		Repository: image.RepoTags[0],
-		Tag:        version(image.RepoTags[0]),
-		ImageID:    imageID(image.ID),
-		Created:    created(image.Created),
-		Size:       size(image.Size),
+// toImage 将 image.Summary 转换为内部 Image 结构
+func toImage(img image.Summary) ImgInfo {
+	repo, tag := parseRepoTag(img.RepoTags)
+	return ImgInfo{
+		Repository: repo,
+		Tag:        tag,
+		ImageID:    parseImageID(img.ID),
+		Created:    parseCreated(img.Created),
+		Size:       parseSize(img.Size),
 	}
 }
 
-// version 处理镜像版本
-func version(repoTags string) string {
-	res := strings.Split(repoTags, ":")
-	return res[len(res)-1]
-}
-
-// imageID 处理镜像ID
-func imageID(id string) string {
+// parseImageID 处理镜像ID
+func parseImageID(id string) string {
 	withoutPrefix := strings.TrimPrefix(id, "sha256:")
-	imageID := withoutPrefix[:12]
-	return imageID
+	if len(withoutPrefix) >= 12 {
+		return withoutPrefix[:12]
+	}
+	return withoutPrefix
 }
 
-// created 处理镜像列表输出的创建的时间
-func created(timestamp int64) string {
+// parseRepoTag 安全地解析 Repository 和 Tag
+func parseRepoTag(repoTags []string) (string, string) {
+	// 处理悬空镜像 (Dangling images)
+	if len(repoTags) == 0 {
+		return "<none>", "<none>"
+	}
+	full := repoTags[0]
+	// 使用 LastIndex 防止 URL 中自带端口导致切割错误 (例如 registry:5000/image:tag)
+	lastColon := strings.LastIndex(full, ":")
+	if lastColon == -1 {
+		return full, "latest"
+	}
+	return full[:lastColon], full[lastColon+1:]
+}
+
+// parseCreated 处理镜像列表输出的创建的时间
+func parseCreated(timestamp int64) string {
 	now := time.Now().Unix()
 	diff := now - timestamp
 	if diff < 0 {
@@ -82,11 +104,11 @@ func created(timestamp int64) string {
 	}
 	// 分钟
 	if diff < 3600 {
-		mins := diff / 60
-		if mins == 1 {
+		minutes := diff / 60
+		if minutes == 1 {
 			return "1 minute ago"
 		}
-		return fmt.Sprintf("%d minutes ago", mins)
+		return fmt.Sprintf("%d minutes ago", minutes)
 	}
 	// 小时
 	if diff < 86400 {
@@ -120,8 +142,8 @@ func created(timestamp int64) string {
 	return fmt.Sprintf("%d years ago", years)
 }
 
-// size 处理镜像列表输出的镜像大小格式
-func size(size int64) string {
+// parseSize 处理镜像列表输出的镜像大小格式
+func parseSize(size int64) string {
 	// 处理负数的情况（虽然镜像大小通常没有负数）
 	sign := ""
 	if size < 0 {
@@ -161,15 +183,19 @@ func size(size int64) string {
 	return fmt.Sprintf("%s%s%s", sign, formattedStr, units[unitIndex])
 }
 
-// ImagePull 镜像下载
-func ImagePull(name string) error {
-	client := InitClient()
-	defer client.Close() // 关闭客户端
-	pull, err := client.ImagePull(context.Background(), name, image.PullOptions{})
+// Pull 镜像下载
+func Pull(name string) error {
+	cli := InitClient()
+	defer Close(cli) // 关闭客户端
+	pull, err := cli.ImagePull(context.Background(), name, image.PullOptions{})
 	if err != nil {
 		return err
 	}
-	defer pull.Close()
+	defer func() {
+		if closeErr := pull.Close(); err != nil {
+			log.Printf("关闭镜像 [%s] 的拉取流时发生错误: %v\n", name, closeErr)
+		}
+	}()
 	// 将拉取过程的日志输出到标准输出（控制台），这样你就能看到下载进度了
 	_, err = io.Copy(os.Stdout, pull)
 	if err != nil {
@@ -178,18 +204,18 @@ func ImagePull(name string) error {
 	return nil
 }
 
-// ImageRemove 镜像删除
-func ImageRemove(imageTag string) (bool, error) {
+// Remove 镜像删除
+func Remove(imageTag string) (bool, error) {
 	// 获取client实例
-	client := InitClient()
-	defer client.Close() // 关闭客户端
+	cli := InitClient()
+	defer Close(cli) // 关闭客户端
 	// 设置删除选项
 	removeOpts := image.RemoveOptions{
 		Force:         true, // 强制删除，即使被容器使用 [7]
 		PruneChildren: true, // 删除未使用的父镜像
 	}
 	// 执行删除
-	deleted, err := client.ImageRemove(context.Background(), imageTag, removeOpts)
+	deleted, err := cli.ImageRemove(context.Background(), imageTag, removeOpts)
 	if err != nil {
 		// 判断是否是“镜像不存在”的情况
 		var target notFoundErr
